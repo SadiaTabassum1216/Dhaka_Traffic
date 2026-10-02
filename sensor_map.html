@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Dhaka Traffic Sensor Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="config.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Outfit', sans-serif; overflow: hidden; background: #0f172a; }
+        #map { width: 100vw; height: 100vh; background: #0f172a; }
+
+        .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #e2e8f0;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ---- Development Tools ---- */
+        #coord-box {
+            position: fixed; bottom: 24px; left: 50%;
+            transform: translateX(-50%); z-index: 1000;
+            padding: 16px 20px; min-width: 340px; display: none;
+        }
+        #coord-vals { font-size: 13px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; font-family: 'Courier New', monospace; max-height: 150px; overflow-y: auto; }
+        
+        .copy-btn {
+            background: #3b82f6; color: white; border: none; border-radius: 8px;
+            padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+        .copy-btn:hover { background: #2563eb; transform: translateY(-1px); }
+
+        /* ---- Dashboard UI ---- */
+        #badge { position: fixed; top: 16px; right: 16px; z-index: 1000; padding: 12px 20px; text-align: right; }
+        #badge h2 { font-size: 28px; font-weight: 700; color: #f8fafc; line-height: 1; }
+        #badge p { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
+
+        #dev-btn {
+            position: fixed; top: 110px; right: 16px; z-index: 1000;
+            background: rgba(15, 23, 42, 0.85); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px; padding: 10px 16px; cursor: pointer; font-size: 11px; font-weight: 700; 
+            text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.2s;
+        }
+        #dev-btn.active { background: #ef4444; color: white; border-color: transparent; }
+
+        .leaflet-control-layers { background: rgba(15, 23, 42, 0.85) !important; color: #f1f5f9 !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; border-radius: 12px !important; padding: 10px !important; }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <button id="dev-btn" onclick="toggleDrawingTool()">Drawing Tool: OFF</button>
+    <div id="badge" class="glass"><h2 id="sensor-count">0</h2><p>Active Sensors</p></div>
+    <div id="coord-box" class="glass">
+        <h4 style="font-size:11px; color:#94a3b8; margin-bottom:8px">📌 COORDINATE CAPTURE</h4>
+        <div id="coord-vals">Click map to start...</div>
+        <div style="display: flex; gap: 8px;">
+            <button class="copy-btn" id="copy-btn" style="flex:2" onclick="copyCoords()">Copy JSON</button>
+            <button class="copy-btn" style="background: #e11d48;" onclick="undoLast()">Undo</button>
+            <button class="copy-btn" style="background: #a8a29e;" onclick="clearPath()">Clear</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Placeholders for sync_sensor_map.py ---
+        // Load sensors from config.js (bypass CORS)
+        let sensors = [];
+        if (typeof window.SENSORS_CONFIG !== 'undefined') {
+            sensors = window.SENSORS_CONFIG;
+            document.getElementById('sensor-count').innerText = sensors.length;
+        } else {
+            console.error("config.js is missing or SENSORS_CONFIG is not defined!");
+        }
+        const TARGET_Z = 13;
+
+        // Dhaka study area boundary
+        const dhakaPath = [[23.87767555995429, 90.35087585449219], [23.879402209405217, 90.35465240478516], [23.882698476207683, 90.35791397094727], [23.888035111101665, 90.35791397094727], [23.89148811049623, 90.35928726196289], [23.893999324887197, 90.36323547363281], [23.896196597481914, 90.37010192871094], [23.897295219779323, 90.37593841552734], [23.899178550573794, 90.3816032409668], [23.896196597481914, 90.3870964050293], [23.889918576743234, 90.39155960083008], [23.883483289261406, 90.39310455322266], [23.88081490545854, 90.39688110351562], [23.88191365839404, 90.40426254272461], [23.882384549653413, 90.41027069091797], [23.884425058642652, 90.41439056396484], [23.887093367997664, 90.4200553894043], [23.891174205269195, 90.42520523071289], [23.895725756497264, 90.4310417175293], [23.89996326364219, 90.43739318847656], [23.89933549356848, 90.44408798217773], [23.89603965067751, 90.45129776000977], [23.894313223257797, 90.4585075378418], [23.888505980082908, 90.45988082885742], [23.88191365839404, 90.46125411987305], [23.876262829634182, 90.4643440246582], [23.86966988427877, 90.4698371887207], [23.864175506693375, 90.47344207763672], [23.857738939347506, 90.4749870300293], [23.849575028074316, 90.47378540039062], [23.84203865350203, 90.47361373901367], [23.835600986620936, 90.4782485961914], [23.83136137292868, 90.48219680786133], [23.83246054534087, 90.4863166809082], [23.828534886814467, 90.48717498779297], [23.823509870559736, 90.48734664916992], [23.818327618730915, 90.48648834228516], [23.81408744059987, 90.48528671264648], [23.809533020935255, 90.48425674438477], [23.804036094800438, 90.48357009887695], [23.79806774014946, 90.48151016235352], [23.79037129915711, 90.47962188720703], [23.785344805941214, 90.472412109375], [23.781260637086874, 90.47292709350586], [23.777647611541717, 90.47859191894531], [23.77324901017239, 90.48236846923828], [23.766493725590013, 90.48254013061523], [23.75989520204564, 90.48322677612305], [23.75612446695305, 90.48803329467773], [23.750311036358454, 90.48614501953125], [23.745754382285057, 90.48974990844727], [23.744497346207787, 90.49489974975586], [23.738997670732218, 90.49266815185547], [23.734126335709536, 90.49249649047852], [23.732083463598965, 90.49850463867188], [23.727054718902064, 90.50056457519531], [23.72249725144734, 90.49919128417969], [23.71699664753594, 90.50159454345703], [23.71291033443925, 90.5079460144043], [23.69357719517947, 90.48116683959961], [23.678328716367165, 90.4775619506836], [23.670939638014282, 90.46623229980469], [23.66810966758286, 90.45988082885742], [23.662449542924175, 90.45867919921875], [23.664650731631614, 90.45198440551758], [23.67298346744208, 90.44563293457031], [23.680058014792774, 90.43825149536133], [23.68508857096911, 90.43207168579102], [23.69216246279699, 90.42348861694336], [23.70347989259657, 90.41181564331055], [23.711181471130107, 90.39825439453125], [23.7081951987208, 90.3848648071289], [23.707409326199798, 90.37113189697266], [23.711967320929258, 90.36151885986328], [23.720768515220428, 90.35928726196289], [23.731612027025733, 90.35619735717773], [23.73789770777535, 90.35327911376953], [23.741511836903012, 90.34778594970703], [23.747797040034396, 90.34160614013672], [23.74905404426323, 90.33182144165039], [23.752982104271187, 90.32941818237305], [23.757852734096538, 90.3350830078125], [23.76350872066849, 90.33868789672852], [23.767750549280972, 90.34246444702148], [23.77262062640471, 90.34109115600586], [23.774348674461024, 90.33422470092773], [23.778747238639145, 90.33662796020508], [23.78471648062244, 90.3347396850586], [23.789585922405408, 90.33851623535156], [23.795240529083365, 90.33920288085938], [23.799167194504985, 90.34109115600586], [23.805449612314625, 90.34126281738281], [23.81204582395521, 90.33817291259766], [23.81644311221666, 90.340576171875], [23.818641700489906, 90.33576965332031], [23.822881729844475, 90.33748626708984], [23.826179434676966, 90.34160614013672], [23.831047321957268, 90.34040451049805], [23.836386085059267, 90.33885955810547], [23.840939562270407, 90.34074783325195], [23.84706295190193, 90.33645629882812], [23.85193005526536, 90.33851623535156], [23.857738939347506, 90.34383773803711], [23.863861535219026, 90.3486442565918], [23.86998384167086, 90.35053253173828], [23.87516402872517, 90.35018920898438], [23.87767555995429, 90.35087585449219]];
+
+        // Initialize Map
+        const map = L.map('map', { zoomControl: false, zoomDelta: 0.5 }).setView([23.7771, 90.4056], 13);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Base Layers
+        const gRoads = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['0', '1', '2', '3'], attribution: 'Google Maps' }).addTo(map);
+        const gSat   = L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['0', '1', '2', '3'], attribution: 'Google Satellite' });
+
+        // Overlays
+        const sensorLayer   = L.layerGroup().addTo(map);
+        const sampleLayer   = L.layerGroup().addTo(map);
+        const boundaryLayer = L.layerGroup();
+        const gridLayer     = L.layerGroup();
+
+        // 1. Boundary Mask (Inverse Polygon)
+        const worldBounds = [
+            [90, -180],
+            [90, 180],
+            [-90, 180],
+            [-90, -180]
+        ];
+        // The mask (dimming the outside)
+        L.polygon([worldBounds, dhakaPath], { 
+            color: 'none', 
+            fillColor: '#ffffff', 
+            fillOpacity: 0.7 
+        }).addTo(boundaryLayer);
+        
+        // The outline
+        L.polygon(dhakaPath, { 
+            color: '#2563eb', 
+            weight: 3, 
+            fillOpacity: 0.0 
+        }).addTo(boundaryLayer);
+
+        // 2. Grid & Sensors Calculation
+        function initSensors() {
+            sensorLayer.clearLayers();
+            sampleLayer.clearLayers();
+            gridLayer.clearLayers();
+            
+            const uniqueTiles = new Set();
+            
+            sensors.forEach(s => {
+                if (s.path && s.path.length > 1) {
+                    const latlngs = s.path.map(p => [p.lat, p.lon]);
+                    L.polyline(latlngs, { color: "#3b82f6", weight: 7, opacity: 0.8 }).bindPopup(s.name).addTo(sensorLayer);
+                    
+                    // Start Node
+                    L.circleMarker(latlngs[0], { radius: 4, fillColor: "#10b981", color: "#fff", weight: 1.5, fillOpacity: 1 }).addTo(sensorLayer);
+
+                    // Samples
+                    const spacing = 25; 
+                    for (let i = 0; i < latlngs.length - 1; i++) {
+                        const start = L.latLng(latlngs[i]);
+                        const end = L.latLng(latlngs[i+1]);
+                        const dist = start.distanceTo(end);
+                        const steps = Math.floor(dist / spacing);
+                        for (let j = 1; j < steps; j++) {
+                            const f = j / steps;
+                            const lat = start.lat + (end.lat - start.lat) * f;
+                            const lon = start.lng + (end.lng - start.lng) * f;
+                            L.circleMarker([lat, lon], { radius: 1.5, fillColor: "#7dd3fc", color: "none", fillOpacity: 0.7 }).addTo(sampleLayer);
+                            
+                            // Map to tile for grid visibility
+                            const n = Math.pow(2, TARGET_Z);
+                            const tx = Math.floor((lon + 180) / 360 * n);
+                            const ty = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+                            const key = `${tx}_${ty}`;
+                            if (!uniqueTiles.has(key)) {
+                                uniqueTiles.add(key);
+                                const west = tx / n * 360 - 180;
+                                const east = (tx + 1) / n * 360 - 180;
+                                const north = Math.atan(Math.sinh(Math.PI * (1 - 2 * ty / n))) * 180 / Math.PI;
+                                const south = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 1) / n))) * 180 / Math.PI;
+                                L.rectangle([[south, west], [north, east]], { color: "#ef4444", weight: 1.5, fillOpacity: 0.05 }).bindTooltip(`Tile ${key}`).addTo(gridLayer);
+                            }
+                        }
+                    }
+                }
+            });
+            document.getElementById('sensor-count').textContent = sensors.length;
+        }
+
+        initSensors();
+
+        // Control
+        L.control.layers(
+            { "Google Roads": gRoads, "Google Satellite": gSat },
+            { "Road Segments": sensorLayer, "Sampling Points": sampleLayer, "Dhaka Boundary": boundaryLayer, "Traffic Grid": gridLayer },
+            { position: 'topleft', collapsed: false }
+        ).addTo(map);
+
+        // --- DRAWING TOOL LOGIC ---
+        let devMode = false;
+        let currentPath = [];
+        let drawLine = L.polyline([], { color: '#f43f5e', weight: 4, dashArray: '5, 10' }).addTo(map);
+        let drawNodes = L.layerGroup().addTo(map);
+
+        function toggleDrawingTool() {
+            devMode = !devMode;
+            const btn = document.getElementById('dev-btn');
+            btn.textContent = devMode ? "Drawing Tool: ON" : "Drawing Tool: OFF";
+            btn.className = devMode ? "active" : "";
+            document.getElementById('coord-box').style.display = devMode ? "block" : "none";
+            if (!devMode) clearPath();
+        }
+
+        map.on('click', e => {
+            if (!devMode) return;
+            const lat = parseFloat(e.latlng.lat.toFixed(6));
+            const lon = parseFloat(e.latlng.lng.toFixed(6));
+            currentPath.push({ lat, lon });
+            drawLine.setLatLngs(currentPath.map(p => [p.lat, p.lon]));
+            L.circleMarker([lat, lon], { radius: 4, fillColor: "#f43f5e", color: "#fff", weight: 1.5, fillOpacity: 1 }).addTo(drawNodes);
+            updatePopupText();
+        });
+
+        function clearPath() { currentPath = []; drawLine.setLatLngs([]); drawNodes.clearLayers(); updatePopupText(); }
+        function undoLast() { if (currentPath.length > 0) { currentPath.pop(); drawLine.setLatLngs(currentPath.map(p => [p.lat, p.lon])); drawNodes.clearLayers(); currentPath.forEach(p => L.circleMarker([p.lat, p.lon], { radius: 4, fillColor: "#f43f5e", color: "#fff", weight: 1.5, fillOpacity: 1 }).addTo(drawNodes)); updatePopupText(); } }
+        function updatePopupText() { const el = document.getElementById('coord-vals'); if (currentPath.length === 0) { el.innerHTML = "Click map to start..."; return; } let h = '"path": [<br/>'; currentPath.forEach((p, i) => h += `&nbsp;&nbsp;{"lat": ${p.lat}, "lon": ${p.lon}}${i < currentPath.length - 1 ? ',' : ''}<br/>`); h += ']'; el.innerHTML = h; el.scrollTop = el.scrollHeight; }
+        function copyCoords() { if (currentPath.length === 0) return; let t = `"path": [\n`; currentPath.forEach((p, i) => t += `  {"lat": ${p.lat}, "lon": ${p.lon}}${i < currentPath.length - 1 ? ',' : ''}\n`); t += `]`; navigator.clipboard.writeText(t).then(() => { const b = document.getElementById('copy-btn'); b.textContent = '✓ Copied!'; setTimeout(() => { b.textContent = 'Copy JSON'; }, 2000); }); }
+    </script>
+</body>
+</html>

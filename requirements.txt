@@ -1,0 +1,8 @@
+pandas
+requests
+matplotlib
+seaborn
+Pillow
+numpy
+opencv-python-headless
+python-dotenv

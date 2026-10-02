@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dhaka Traffic Analytics Dashboard</title>
+    <!-- Google Fonts: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --radius: 12px;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            
+            /* Traffic Colors (Base points for interpolation) */
+            --color-standstill: #811F1F;
+            --color-congested: #F23C32;
+            --color-slow: #FF974D;
+            --color-moderate: #FFC107;
+            --color-freeflow: #63D668;
+            
+            --gradient-traffic: linear-gradient(to top, 
+                var(--color-standstill) 0%, 
+                var(--color-congested) 25%, 
+                var(--color-slow) 50%, 
+                var(--color-moderate) 75%, 
+                var(--color-freeflow) 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Desktop specific layout improvements */
+        @media (min-width: 1024px) {
+            main {
+                overflow-y: auto !important;
+            }
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            padding: 1.25rem;
+            height: 100vh;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-auto-rows: minmax(400px, auto);
+            grid-template-rows: auto;
+            gap: 1.5rem;
+            padding-bottom: 3rem;
+        }
+
+        header {
+            grid-column: span 2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 1rem 1.5rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .stats-summary {
+            grid-column: span 2;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-card {
+            flex: 1;
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .summary-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.25rem 0.6rem;
+            background: #f1f5f9;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+        }
+
+        .widget {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            height: 100%; /* Fill the grid cell */
+            min-height: 0; /* Allow shrinking below content size */
+            overflow: hidden;
+        }
+
+        .widget-header {
+            flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .widget-title {
+            font-weight: 600;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .widget-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-top: -0.25rem;
+            margin-left: 1.5rem;
+        }
+
+        .btn-export {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s;
+        }
+
+        .btn-export:hover {
+            background: #f1f5f9;
+            border-color: #cbd5e1;
+        }
+
+        #heatmap-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+
+        #map-canvas {
+            height: 100%;
+            width: 100%;
+            border-radius: 8px;
+            z-index: 1;
+        }
+
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: 80px repeat(auto-fill, 20px);
+            gap: 1px;
+            font-size: 10px;
+        }
+
+        .heatmap-cell {
+            width: 20px;
+            height: 20px;
+            border-radius: 2px;
+        }
+
+        /* Color Key */
+        .color-key {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .key-item { display: flex; align-items: center; gap: 0.3rem;}
+        .key-box { width: 12px; height: 12px; border-radius: 2px; border: 1px solid #ddd; }
+        
+        /* New Gradient Legend Style */
+        .gradient-legend {
+            width: 100%;
+            height: 12px;
+            background: linear-gradient(to right, 
+                var(--color-standstill), 
+                var(--color-congested), 
+                var(--color-slow), 
+                var(--color-moderate), 
+                var(--color-freeflow));
+            border-radius: 20px;
+            margin: 0.5rem 0;
+            position: relative;
+        }
+        .gradient-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        
+        .v-gradient-container {
+            display: flex;
+            gap: 10px;
+            height: 180px;
+            margin-top: 1rem;
+        }
+        .v-gradient-bar {
+            width: 8px;
+            height: 100%;
+            background: var(--gradient-traffic);
+            border-radius: 10px;
+        }
+        .v-gradient-labels {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        #sensor-detail-chart {
+            flex: 1;
+        }
+
+        /* Full Span Widget (if needed) */
+        .widget-full {
+             grid-column: span 2;
+             height: 100%;
+             min-height: 0;
+        }
+
+        #heatmap-canvas-container {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <header style="height: auto; min-height: 70px; grid-column: span 2;">
+            <div style="display: flex; align-items: center; gap: 1.5rem;">
+                <div class="logo">
+                    <i data-lucide="navigation"></i>
+                    <span>Dhaka Traffic</span>
+                </div>
+                <div style="height: 30px; width: 1px; background: var(--border);"></div>
+                <div>
+                    <h1 style="font-size: 1.25rem; font-weight: 700;">Dhaka Traffic Analytics Dashboard</h1>
+                <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.2rem;">
+                    <p id="data-filename" style="color: var(--text-muted); font-size: 0.85rem; font-weight: 500; cursor: pointer;">Please load a traffic MCI CSV file.</p>
+                    <div id="network-stats-pills" style="display: flex; gap: 0.5rem; visibility: hidden;">
+                        <span class="summary-pill"><i data-lucide="gauge" style="width: 14px;"></i> Mean MCI: <span id="stat-mean">0</span></span>
+                        <span class="summary-pill"><i data-lucide="clock" style="width: 14px;"></i> Latest: <span id="stat-latest-time">--:--</span></span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                 <input type="file" id="csv-upload" accept=".csv" style="display: none;">
+                 <button class="btn-export" style="background: var(--primary); color: white; border: none;" onclick="document.getElementById('csv-upload').click()">
+                    <i data-lucide="upload"></i> Load Data
+                 </button>
+                 <button class="btn-export" onclick="window.location.reload()"><i data-lucide="refresh-cw"></i> Refresh</button>
+            </div>
+        </header>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="grid"></i> Customised Heatmap</div>
+                    <div class="widget-subtitle">Filter by Date Range</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem;">
+                    <input type="date" id="custom-heatmap-start-date" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="renderCustomHeatmap()">
+                    <span>to</span>
+                    <input type="date" id="custom-heatmap-end-date" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="renderCustomHeatmap()">
+                </div>
+            </div>
+            <div id="custom-heatmap-canvas-container" style="flex: 1; min-height: 0; overflow: auto;">
+                <canvas id="custom-heatmap-canvas"></canvas>
+            </div>
+            <div style="padding-top: 0.5rem; display: flex; justify-content: flex-end;">
+                <button class="btn-export" id="export-custom-heatmap"><i data-lucide="camera"></i> Snapshot</button>
+            </div>
+        </div>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="line-chart"></i> MCI Trend & Temporal Profile</div>
+                    <div class="widget-subtitle" id="global-dist-subtitle">Network Average vs Selected Location</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <select id="trend-sensor-select" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupGlobalDistChart()">
+                        <option value="none">Network Average Only</option>
+                    </select>
+                    <button class="btn-export" id="export-global-dist"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; position: relative; min-height: 0;">
+                <canvas id="global-dist-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="widget" style="grid-column: span 2;">
+            <div class="widget-header">
+                <div class="widget-title"><i data-lucide="grid"></i> Network-wide MCI Heatmap</div>
+                <div style="width: 200px;">
+                    <div class="gradient-legend"></div>
+                    <div class="gradient-labels">
+                        <span>4.0</span>
+                        <span>3.0</span>
+                        <span>2.0</span>
+                        <span>1.0</span>
+                    </div>
+                </div>
+            </div>
+            <div id="heatmap-canvas-container" style="flex: 1; min-height: 0;">
+                <canvas id="heatmap-canvas"></canvas>
+            </div>
+            <div style="padding-top: 0.5rem; display: flex; justify-content: flex-end;">
+                <button class="btn-export" id="export-heatmap"><i data-lucide="camera"></i> Snapshot</button>
+            </div>
+        </div>
+
+        <!-- Aggregate Patterns (Phase 3) -->
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="clock-4"></i> Daily Traffic Pattern (Hourly Average)</div>
+                    <div class="widget-subtitle">Aggregated distribution by hour of day</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="date" id="daily-date-input" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyPatternChart()">
+                    <select id="daily-sensor-select" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyPatternChart()">
+                        <option value="network">Average</option>
+                    </select>
+                    <button class="btn-export" id="export-daily"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="daily-pattern-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="calendar-days"></i> Weekly Traffic Pattern</div>
+                    <div class="widget-subtitle">Average performance by day of week</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="date" id="weekly-date-input" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupWeeklyPatternChart()">
+                    <select id="weekly-sensor-select" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupWeeklyPatternChart()">
+                        <option value="network">Average</option>
+                    </select>
+                    <button class="btn-export" id="export-weekly"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="weekly-pattern-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Comparison Patterns -->
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="git-compare"></i> Daily Pattern Comparison</div>
+                    <div class="widget-subtitle">Compare two locations by hour of day</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="date" id="daily-compare-date-input" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyCompareChart()">
+                    <select id="daily-compare-sensor-1" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyCompareChart()"></select>
+                    <span style="font-size: 0.8rem; font-weight: bold;">VS</span>
+                    <select id="daily-compare-sensor-2" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyCompareChart()"></select>
+                    <button class="btn-export" id="export-daily-compare"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="daily-compare-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="git-compare"></i> Weekly Pattern Comparison</div>
+                    <div class="widget-subtitle">Compare two locations by day of week</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="date" id="weekly-compare-date-input" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupWeeklyCompareChart()">
+                    <select id="weekly-compare-sensor-1" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupWeeklyCompareChart()"></select>
+                    <span style="font-size: 0.8rem; font-weight: bold;">VS</span>
+                    <select id="weekly-compare-sensor-2" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupWeeklyCompareChart()"></select>
+                    <button class="btn-export" id="export-weekly-compare"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="weekly-compare-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="calendar-clock"></i> Daily Pattern Date Comparison</div>
+                    <div class="widget-subtitle">Compare traffic of a location across two dates</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <select id="daily-date-compare-sensor" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyDateCompareChart()"></select>
+                    <input type="date" id="daily-date-compare-1" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyDateCompareChart()">
+                    <span style="font-size: 0.8rem; font-weight: bold;">VS</span>
+                    <input type="date" id="daily-date-compare-2" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDailyDateCompareChart()">
+                    <button class="btn-export" id="export-daily-date-compare"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="daily-date-compare-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="widget">
+            <div class="widget-header">
+                <div>
+                    <div class="widget-title"><i data-lucide="calendar-range"></i> Weekday vs Weekend Pattern</div>
+                    <div class="widget-subtitle">Compare daily traffic by day type</div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <select id="daytype-compare-sensor" class="btn-export" style="background: var(--bg); border: 1px solid var(--border);" onchange="setupDaytypeCompareChart()"></select>
+                    <button class="btn-export" id="export-daytype-compare"><i data-lucide="camera"></i> Snapshot</button>
+                </div>
+            </div>
+            <div style="flex: 1; min-height: 0;">
+                <canvas id="daytype-compare-chart"></canvas>
+            </div>
+        </div>
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="config.js"></script>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Constants
+        const COLOR_STOPS = [
+            { speed: 4.0, color: [129, 31, 31] },   // #811F1F (Standstill)
+            { speed: 3.0, color: [242, 60, 50] },   // #F23C32 (Congested)
+            { speed: 2.0, color: [255, 193, 7] },   // #FFC107 (Moderate)
+            { speed: 1.0, color: [99, 214, 104] }   // #63D668 (Free Flow)
+        ];
+
+        function getTrafficColor(speed) {
+            if (speed === null || speed === undefined || speed === 0) return '#FFFFFF';
+            
+            // Clamp speed (for MCI: 1.0 to 4.0, with 1.0 being fastest and 4.0 being slowest)
+            // Note: COLOR_STOPS is ordered by speed value descending (4.0 -> 1.0)
+            if (speed >= COLOR_STOPS[0].speed) return `rgb(${COLOR_STOPS[0].color.join(',')})`;
+            if (speed <= COLOR_STOPS[COLOR_STOPS.length - 1].speed) return `rgb(${COLOR_STOPS[COLOR_STOPS.length - 1].color.join(',')})`;
+            
+            // Find bounding stops
+            let lower = COLOR_STOPS[0];
+            let upper = COLOR_STOPS[COLOR_STOPS.length - 1];
+            
+            for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
+                // Since our new stops are 4.0, 3.0, 2.0, 1.0 (descending)
+                if (speed <= COLOR_STOPS[i].speed && speed >= COLOR_STOPS[i+1].speed) {
+                    lower = COLOR_STOPS[i];
+                    upper = COLOR_STOPS[i+1];
+                    break;
+                }
+            }
+            
+            // Interpolate
+            const range = upper.speed - lower.speed;
+            const factor = (speed - lower.speed) / range;
+            
+            const r = Math.round(lower.color[0] + (upper.color[0] - lower.color[0]) * factor);
+            const g = Math.round(lower.color[1] + (upper.color[1] - lower.color[1]) * factor);
+            const b = Math.round(lower.color[2] + (upper.color[2] - lower.color[2]) * factor);
+            
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function getTrafficLabel(speed) {
+            if (speed === null || speed === undefined || speed === 0) return 'Missing';
+            if (speed >= 3.5) return 'Standstill';
+            if (speed >= 2.5) return 'Congested';
+            if (speed >= 1.5) return 'Moderate';
+            return 'Free Flow';
+        }
+
+        const TRAFFIC_LABELS = {
+            5.0: 'Standstill',
+            12.0: 'Congested',
+            25.0: 'Slow',
+            40.0: 'Moderate',
+            55.0: 'Free Flow',
+            'null': 'Missing'
+        };
+
+        const TRAFFIC_COLORS_ARRAY = COLOR_STOPS.map(s => `rgb(${s.color.join(',')})`);
+
+        // Inlined Sensor Config to avoid CORS issues with config.json
+        let trafficData = [];
+        let sensorsConfig = [];
+        let globalChart = null;
+
+        // Load Data
+        async function init() {
+            try {
+                const resp = await fetch('config.json');
+                const config = await resp.json();
+                sensorsConfig = config.sensors || [];
+                console.log(`Loaded ${sensorsConfig.length} sensors from config.json`);
+            } catch (err) {
+                // Fallback to locally included config.js
+                if (typeof window.SENSORS_CONFIG !== 'undefined') {
+                    sensorsConfig = window.SENSORS_CONFIG;
+                } else {
+                    sensorsConfig = SENSORS_INLINE;
+                }
+            }
+
+            // Setup File Upload listener
+            document.getElementById('csv-upload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                document.getElementById('data-filename').innerText = file.name;
+                
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        trafficData = results.data;
+                        setupDashboard();
+                    }
+                });
+            });
+
+            // Attempt automatic load
+            if (window.location.protocol.startsWith('http')) {
+                const csvPath = 'test_continuous_speeds.csv'; // Try test data first if it exists
+                
+                Papa.parse(csvPath, {
+                    download: true,
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        document.getElementById('data-filename').innerText = csvPath;
+                        trafficData = results.data;
+                        setupDashboard();
+                    },
+                    error: function() {
+                        // Fallback to primary data
+                        const primaryCsv = 'data/traffic_mci_202606.csv';
+                        Papa.parse(primaryCsv, {
+                            download: true,
+                            header: true,
+                            dynamicTyping: true,
+                            skipEmptyLines: true,
+                            complete: function(r) {
+                                document.getElementById('data-filename').innerText = primaryCsv;
+                                trafficData = r.data;
+                                setupDashboard();
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        function setupDashboard() {
+            setupGlobalDistChart();
+            renderHeatmap();
+            renderCustomHeatmap();
+            setupGlobalDistChart();
+            renderHeatmap();
+            updateSummaryStats();
+            
+            const dailySelect = document.getElementById('daily-sensor-select');
+            const weeklySelect = document.getElementById('weekly-sensor-select');
+            const dailyComp1 = document.getElementById('daily-compare-sensor-1');
+            const dailyComp2 = document.getElementById('daily-compare-sensor-2');
+            const weeklyComp1 = document.getElementById('weekly-compare-sensor-1');
+            const weeklyComp2 = document.getElementById('weekly-compare-sensor-2');
+            const dailyDateComp = document.getElementById('daily-date-compare-sensor');
+            const daytypeComp = document.getElementById('daytype-compare-sensor');
+            
+            while(dailySelect.options.length > 1) dailySelect.remove(1);
+            while(weeklySelect.options.length > 1) weeklySelect.remove(1);
+            if (dailyComp1) dailyComp1.innerHTML = '<option value="network">Average</option>';
+            if (dailyComp2) dailyComp2.innerHTML = '<option value="network">Average</option>';
+            if (weeklyComp1) weeklyComp1.innerHTML = '<option value="network">Average</option>';
+            if (weeklyComp2) weeklyComp2.innerHTML = '<option value="network">Average</option>';
+            if (dailyDateComp) dailyDateComp.innerHTML = '<option value="network">Average</option>';
+            if (daytypeComp) daytypeComp.innerHTML = '<option value="network">Average</option>';
+
+            const trendSelect = document.getElementById('trend-sensor-select');
+            if (trendSelect) {
+                while(trendSelect.options.length > 1) trendSelect.remove(1);
+            }
+
+            sensorsConfig.forEach(s => {
+                const opt1 = document.createElement('option');
+                opt1.value = s.name;
+                opt1.text = s.name.replace(/_/g, ' ');
+                dailySelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = s.name;
+                opt2.text = s.name.replace(/_/g, ' ');
+                weeklySelect.appendChild(opt2);
+
+                if (dailyComp1 && dailyComp2 && weeklyComp1 && weeklyComp2) {
+                    const c1 = document.createElement('option'); c1.value = s.name; c1.text = s.name.replace(/_/g, ' ');
+                    const c2 = document.createElement('option'); c2.value = s.name; c2.text = s.name.replace(/_/g, ' ');
+                    const c3 = document.createElement('option'); c3.value = s.name; c3.text = s.name.replace(/_/g, ' ');
+                    const c4 = document.createElement('option'); c4.value = s.name; c4.text = s.name.replace(/_/g, ' ');
+
+                    dailyComp1.appendChild(c1); dailyComp2.appendChild(c2);
+                    weeklyComp1.appendChild(c3); weeklyComp2.appendChild(c4);
+                }
+                
+                if (dailyDateComp) {
+                    const c5 = document.createElement('option'); c5.value = s.name; c5.text = s.name.replace(/_/g, ' ');
+                    dailyDateComp.appendChild(c5);
+                }
+                
+                if (daytypeComp) {
+                    const c6 = document.createElement('option'); c6.value = s.name; c6.text = s.name.replace(/_/g, ' ');
+                    daytypeComp.appendChild(c6);
+                }
+
+                if (trendSelect) {
+                    const opt = document.createElement('option');
+                    opt.value = s.name;
+                    opt.text = s.name.replace(/_/g, ' ');
+                    trendSelect.appendChild(opt);
+                }
+            });
+
+            if (sensorsConfig.length > 1 && dailyComp2 && weeklyComp2) {
+                dailyComp2.value = sensorsConfig[1].name;
+                weeklyComp2.value = sensorsConfig[1].name;
+            }
+
+            setupDailyPatternChart();
+            setupWeeklyPatternChart();
+            setupDailyCompareChart();
+            setupWeeklyCompareChart();
+            setupDailyDateCompareChart();
+            setupDaytypeCompareChart();
+        }
+
+        function updateSummaryStats() {
+            const latest = trafficData[trafficData.length - 1];
+            let speeds = [];
+            sensorsConfig.forEach(s => {
+                const v = latest[s.name];
+                if (typeof v === 'number' && v > 0) speeds.push(v);
+            });
+            
+            if (speeds.length > 0) {
+                const mean = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+                const std = Math.sqrt(speeds.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / speeds.length);
+                document.getElementById('stat-mean').innerText = `${mean.toFixed(1)} ▒ ${std.toFixed(1)}`;
+            } else {
+                document.getElementById('stat-mean').innerText = '0';
+            }
+            document.getElementById('stat-latest-time').innerText = latest.time;
+            document.getElementById('network-stats-pills').style.visibility = 'visible';
+        }
+
+        function setupGlobalDistChart() {
+            const days = [...new Set(trafficData.map(row => row.day))];
+            const dayRange = days.length > 1 ? `${days[0]} - ${days[days.length - 1]}` : (days[0] || '');
+            document.getElementById('global-dist-subtitle').innerText = dayRange;
+
+            const trendSelect = document.getElementById('trend-sensor-select');
+            const targetSensor = trendSelect ? trendSelect.value : 'none';
+
+            const labels = trafficData.map(row => row.time);
+            
+            const dayLabels = new Array(trafficData.length).fill('');
+            const boundaryIndices = [];
+            let currentDayStart = 0;
+            let currentDay = trafficData[0].day;
+
+            trafficData.forEach((row, i) => {
+                if (row.day !== currentDay) {
+                    const middle = Math.floor((currentDayStart + i - 1) / 2);
+                    dayLabels[middle] = currentDay;
+                    boundaryIndices.push(i);
+                    currentDayStart = i;
+                    currentDay = row.day;
+                }
+            });
+            const lastMiddle = Math.floor((currentDayStart + trafficData.length - 1) / 2);
+            dayLabels[lastMiddle] = currentDay;
+
+            const averages = trafficData.map(row => {
+                let speeds = [];
+                sensorsConfig.forEach(s => {
+                    const v = row[s.name];
+                    if (typeof v === 'number' && v > 0) speeds.push(v);
+                });
+                return speeds.length > 0 ? (speeds.reduce((a, b) => a + b, 0) / speeds.length) : 0;
+            });
+
+            const datasets = [{
+                label: 'Network Average',
+                data: averages,
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                borderWidth: 3,
+                pointRadius: 2,
+                fill: true,
+                tension: 0.4
+            }];
+
+            if (targetSensor && targetSensor !== 'none') {
+                datasets.push({
+                    label: targetSensor.replace(/_/g, ' '),
+                    data: trafficData.map(r => r[targetSensor]),
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'transparent',
+                    borderWidth: 3,
+                    pointRadius: 2,
+                    fill: false,
+                    tension: 0.4
+                });
+            }
+
+            const ctx = document.getElementById('global-dist-chart').getContext('2d');
+            if (globalChart) globalChart.destroy();
+            
+            globalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, position: 'top', labels: { font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    const idx = items[0].dataIndex;
+                                    return `${trafficData[idx].time} (${trafficData[idx].day})`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            min: 1.0,
+                            max: 4.0,
+                            reverse: true,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        },
+                        x: {
+                            title: { display: true, text: 'Time', font: { size: 10 } },
+                            ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } }
+                        },
+                        xDay: {
+                            type: 'category',
+                            labels: dayLabels,
+                            grid: {
+                                drawOnChartArea: true,
+                                color: (ctx) => boundaryIndices.includes(ctx.index) ? 'rgba(0,0,0,0.4)' : 'transparent',
+                                lineWidth: (ctx) => boundaryIndices.includes(ctx.index) ? 2 : 0,
+                                drawTicks: true
+                            },
+                            ticks: {
+                                font: { weight: 'bold', size: 10 },
+                                color: '#1e293b',
+                                autoSkip: false,
+                                maxRotation: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderHeatmap() {
+            const canvas = document.getElementById('heatmap-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            let cellW = 15;
+            const cellH = 15;
+            const labelW = 120;
+            const MAX_CANVAS_WIDTH = 16000;
+            
+            if (labelW + (trafficData.length * cellW) > MAX_CANVAS_WIDTH) {
+                cellW = (MAX_CANVAS_WIDTH - labelW) / trafficData.length;
+            }
+            
+            // Set canvas size
+            canvas.width = labelW + (trafficData.length * cellW);
+            canvas.height = sensorsConfig.length * cellH;
+
+            // Draw labels
+            ctx.font = '10px Outfit';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+
+            const drawW = cellW > 2 ? cellW - 1 : cellW;
+
+            sensorsConfig.forEach((sensor, i) => {
+                ctx.fillStyle = '#1e293b';
+                ctx.fillText(sensor.name.replace(/_/g, ' '), labelW - 10, i * cellH + cellH/2);
+                
+                // Draw cells
+                trafficData.forEach((row, j) => {
+                    const val = row[sensor.name];
+                    ctx.fillStyle = getTrafficColor(val);
+                    ctx.fillRect(labelW + (j * cellW), i * cellH, drawW, cellH - 1);
+                    
+                    // Subtle border for 'Missing' cells to keep them visible
+                    if (val === null || val === undefined || val === 0) {
+                        ctx.strokeStyle = '#eee';
+                        ctx.strokeRect(labelW + (j * cellW), i * cellH, drawW, cellH - 1);
+                    }
+                });
+            });
+        }
+
+        function renderCustomHeatmap() {
+            const startDateStr = document.getElementById('custom-heatmap-start-date').value;
+            const endDateStr = document.getElementById('custom-heatmap-end-date').value;
+
+            let filteredData = trafficData;
+            
+            if (startDateStr || endDateStr) {
+                filteredData = trafficData.filter(row => {
+                    if (!row.timestamp) return true;
+                    const rowDateStr = row.timestamp.toString().substring(0, 8); // YYYYMMDD
+                    
+                    let include = true;
+                    if (startDateStr) {
+                        const start = startDateStr.replace(/-/g, '');
+                        if (rowDateStr < start) include = false;
+                    }
+                    if (endDateStr) {
+                        const end = endDateStr.replace(/-/g, '');
+                        if (rowDateStr > end) include = false;
+                    }
+                    return include;
+                });
+            }
+
+            const canvas = document.getElementById('custom-heatmap-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            let cellW = 15;
+            const cellH = 15;
+            const labelW = 120;
+            const MAX_CANVAS_WIDTH = 16000;
+            
+            if (labelW + (filteredData.length * cellW) > MAX_CANVAS_WIDTH) {
+                cellW = (MAX_CANVAS_WIDTH - labelW) / Math.max(1, filteredData.length);
+            }
+            
+            // Set canvas size
+            canvas.width = labelW + (filteredData.length * cellW);
+            canvas.height = sensorsConfig.length * cellH;
+
+            // Draw labels
+            ctx.font = '10px Outfit';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // clear
+
+            if (filteredData.length === 0) {
+                ctx.fillText("No data for selected range", labelW + 100, canvas.height / 2);
+                return;
+            }
+
+            const drawW = cellW > 2 ? cellW - 1 : cellW;
+
+            sensorsConfig.forEach((sensor, i) => {
+                ctx.fillStyle = '#1e293b';
+                ctx.fillText(sensor.name.replace(/_/g, ' '), labelW - 10, i * cellH + cellH/2);
+                
+                // Draw cells
+                filteredData.forEach((row, j) => {
+                    const val = row[sensor.name];
+                    ctx.fillStyle = getTrafficColor(val);
+                    ctx.fillRect(labelW + (j * cellW), i * cellH, drawW, cellH - 1);
+                    
+                    // Subtle border for 'Missing' cells to keep them visible
+                    if (val === null || val === undefined || val === 0) {
+                        ctx.strokeStyle = '#eee';
+                        ctx.strokeRect(labelW + (j * cellW), i * cellH, drawW, cellH - 1);
+                    }
+                });
+            });
+        }
+
+        // Phase 3: Aggregate Patterns
+        let dailyChart, weeklyChart, dailyCompareChart, weeklyCompareChart, dailyDateCompareChart;
+
+        function setupDailyPatternChart() {
+            const target = document.getElementById('daily-sensor-select') ? document.getElementById('daily-sensor-select').value : 'network';
+            const dateInput = document.getElementById('daily-date-input') ? document.getElementById('daily-date-input').value : '';
+            const hourlyAcc = new Array(24).fill(0).map(() => []);
+            trafficData.forEach(row => {
+                if (dateInput && row.timestamp) {
+                    const rowDateStr = row.timestamp.toString().substring(0, 8);
+                    const inputDateStr = dateInput.replace(/-/g, '');
+                    if (rowDateStr !== inputDateStr) return;
+                }
+                const hour = parseInt(row.time.split(':')[0]);
+                if (target === 'network') {
+                    let rowSpeeds = [];
+                    sensorsConfig.forEach(s => {
+                        const v = row[s.name];
+                        if (typeof v === 'number' && v > 0) rowSpeeds.push(v);
+                    });
+                    
+                    if (rowSpeeds.length > 0) {
+                        const networkMeanAtTimestamp = rowSpeeds.reduce((a, b) => a + b, 0) / rowSpeeds.length;
+                        hourlyAcc[hour].push(networkMeanAtTimestamp);
+                    }
+                } else {
+                    const v = row[target];
+                    if (typeof v === 'number' && v > 0) {
+                        hourlyAcc[hour].push(v);
+                    }
+                }
+            });
+
+            const hourlyStats = hourlyAcc.map(arr => {
+                if (arr.length === 0) return { mean: 0, std: 0 };
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                const std = Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length);
+                return { mean, std };
+            });
+
+            const means = hourlyStats.map(s => s.mean);
+            const upper = hourlyStats.map(s => s.mean + s.std);
+            const lower = hourlyStats.map(s => Math.max(0, s.mean - s.std));
+
+            const ctx = document.getElementById('daily-pattern-chart').getContext('2d');
+            if (dailyChart) dailyChart.destroy();
+            dailyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    datasets: [
+                        {
+                            label: 'Mean Speed',
+                            data: means,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            zIndex: 10
+                        },
+                        {
+                            label: '▒1 SD (Variability)',
+                            data: upper,
+                            borderColor: 'transparent',
+                            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                            fill: '+1',
+                            pointRadius: 0,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Lower Bound',
+                            data: lower,
+                            borderColor: 'transparent',
+                            backgroundColor: 'transparent',
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { filter: (item) => item.text !== 'Lower Bound' } }
+                    },
+                    scales: {
+                        y: { 
+                            min: 1.0,
+                            max: 4.0,
+                            reverse: true,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function setupWeeklyPatternChart() {
+            const target = document.getElementById('weekly-sensor-select') ? document.getElementById('weekly-sensor-select').value : 'network';
+            const dateInput = document.getElementById('weekly-date-input') ? document.getElementById('weekly-date-input').value : '';
+            let targetDates = [];
+            if (dateInput) {
+                const startDate = new Date(dateInput);
+                for(let i=0; i<7; i++) {
+                    let d = new Date(startDate);
+                    d.setDate(d.getDate() + i);
+                    let yyyy = d.getFullYear();
+                    let mm = String(d.getMonth() + 1).padStart(2, '0');
+                    let dd = String(d.getDate()).padStart(2, '0');
+                    targetDates.push(`${yyyy}${mm}${dd}`);
+                }
+            }
+            const dayMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+            const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const weeklyAcc = new Array(7).fill(0).map(() => []);
+
+            trafficData.forEach(row => {
+                if (dateInput && row.timestamp) {
+                    const rowDateStr = row.timestamp.toString().substring(0, 8);
+                    if (!targetDates.includes(rowDateStr)) return;
+                }
+                const dayIdx = dayMap[row.day];
+                if (dayIdx !== undefined) {
+                    if (target === 'network') {
+                        let rowSpeeds = [];
+                        sensorsConfig.forEach(s => {
+                            const v = row[s.name];
+                            if (typeof v === 'number' && v > 0) rowSpeeds.push(v);
+                        });
+                        
+                        if (rowSpeeds.length > 0) {
+                            const networkMeanAtTimestamp = rowSpeeds.reduce((a, b) => a + b, 0) / rowSpeeds.length;
+                            weeklyAcc[dayIdx].push(networkMeanAtTimestamp);
+                        }
+                    } else {
+                        const v = row[target];
+                        if (typeof v === 'number' && v > 0) {
+                            weeklyAcc[dayIdx].push(v);
+                        }
+                    }
+                }
+            });
+
+            const weeklyStats = weeklyAcc.map(arr => {
+                if (arr.length === 0) return { mean: 0, std: 0 };
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                const std = Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length);
+                return { mean, std };
+            });
+
+            const means = weeklyStats.map(s => s.mean);
+            const stds = weeklyStats.map(s => s.std);
+
+            const validMeans = means.filter(m => m > 0);
+            const minMean = validMeans.length > 0 ? Math.min(...validMeans) : 0;
+            const yMin = Math.max(0, Math.floor(minMean) - 5);
+
+            const ctx = document.getElementById('weekly-pattern-chart').getContext('2d');
+            if (weeklyChart) weeklyChart.destroy();
+            weeklyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dayLabels,
+                    datasets: [
+                        {
+                            label: 'Mean',
+                            data: means,
+                            backgroundColor: means.map(v => getTrafficColor(v)),
+                            borderRadius: 6,
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `Mean: ${ctx.parsed.y.toFixed(1)} ▒ ${stds[ctx.dataIndex].toFixed(1)} km/h`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { 
+                            min: 1.0,
+                            max: 4.0,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function getHourlyMeansForTarget(target, dateInput) {
+            const hourlyAcc = new Array(24).fill(0).map(() => []);
+            trafficData.forEach(row => {
+                if (dateInput && row.timestamp) {
+                    const rowDateStr = row.timestamp.toString().substring(0, 8);
+                    const inputDateStr = dateInput.replace(/-/g, '');
+                    if (rowDateStr !== inputDateStr) return;
+                }
+                const hour = parseInt(row.time.split(':')[0]);
+                if (target === 'network') {
+                    let rowSpeeds = [];
+                    sensorsConfig.forEach(s => {
+                        const v = row[s.name];
+                        if (typeof v === 'number' && v > 0) rowSpeeds.push(v);
+                    });
+                    if (rowSpeeds.length > 0) {
+                        hourlyAcc[hour].push(rowSpeeds.reduce((a, b) => a + b, 0) / rowSpeeds.length);
+                    }
+                } else {
+                    const v = row[target];
+                    if (typeof v === 'number' && v > 0) {
+                        hourlyAcc[hour].push(v);
+                    }
+                }
+            });
+            return hourlyAcc.map(arr => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length);
+        }
+
+        function getWeeklyMeansForTarget(target, dateInput) {
+            let targetDates = [];
+            if (dateInput) {
+                const startDate = new Date(dateInput);
+                for(let i=0; i<7; i++) {
+                    let d = new Date(startDate);
+                    d.setDate(d.getDate() + i);
+                    let yyyy = d.getFullYear();
+                    let mm = String(d.getMonth() + 1).padStart(2, '0');
+                    let dd = String(d.getDate()).padStart(2, '0');
+                    targetDates.push(`${yyyy}${mm}${dd}`);
+                }
+            }
+            const dayMap = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+            const weeklyAcc = new Array(7).fill(0).map(() => []);
+
+            trafficData.forEach(row => {
+                if (dateInput && row.timestamp) {
+                    const rowDateStr = row.timestamp.toString().substring(0, 8);
+                    if (!targetDates.includes(rowDateStr)) return;
+                }
+                const dayIdx = dayMap[row.day];
+                if (dayIdx !== undefined) {
+                    if (target === 'network') {
+                        let rowSpeeds = [];
+                        sensorsConfig.forEach(s => {
+                            const v = row[s.name];
+                            if (typeof v === 'number' && v > 0) rowSpeeds.push(v);
+                        });
+                        if (rowSpeeds.length > 0) {
+                            weeklyAcc[dayIdx].push(rowSpeeds.reduce((a, b) => a + b, 0) / rowSpeeds.length);
+                        }
+                    } else {
+                        const v = row[target];
+                        if (typeof v === 'number' && v > 0) {
+                            weeklyAcc[dayIdx].push(v);
+                        }
+                    }
+                }
+            });
+            return weeklyAcc.map(arr => arr.length === 0 ? 0 : arr.reduce((a, b) => a + b, 0) / arr.length);
+        }
+
+        function setupDailyCompareChart() {
+            if (!document.getElementById('daily-compare-sensor-1')) return;
+            const target1 = document.getElementById('daily-compare-sensor-1').value;
+            const target2 = document.getElementById('daily-compare-sensor-2').value;
+            const dateInput = document.getElementById('daily-compare-date-input').value;
+            
+            const means1 = getHourlyMeansForTarget(target1, dateInput);
+            const means2 = getHourlyMeansForTarget(target2, dateInput);
+
+            const ctx = document.getElementById('daily-compare-chart').getContext('2d');
+            if (dailyCompareChart) dailyCompareChart.destroy();
+            dailyCompareChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    datasets: [
+                        {
+                            label: target1.replace(/_/g, ' '),
+                            data: means1,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: target2.replace(/_/g, ' '),
+                            data: means2,
+                            borderColor: '#16a34a',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { 
+                            min: 1.0, max: 4.0, reverse: true,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function setupWeeklyCompareChart() {
+            if (!document.getElementById('weekly-compare-sensor-1')) return;
+            const target1 = document.getElementById('weekly-compare-sensor-1').value;
+            const target2 = document.getElementById('weekly-compare-sensor-2').value;
+            const dateInput = document.getElementById('weekly-compare-date-input').value;
+            
+            const means1 = getWeeklyMeansForTarget(target1, dateInput);
+            const means2 = getWeeklyMeansForTarget(target2, dateInput);
+
+            const ctx = document.getElementById('weekly-compare-chart').getContext('2d');
+            if (weeklyCompareChart) weeklyCompareChart.destroy();
+            weeklyCompareChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+                    datasets: [
+                        {
+                            label: target1.replace(/_/g, ' '),
+                            data: means1,
+                            backgroundColor: '#2563eb',
+                            borderRadius: 4
+                        },
+                        {
+                            label: target2.replace(/_/g, ' '),
+                            data: means2,
+                            backgroundColor: '#16a34a',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { 
+                            min: 1.0, max: 4.0,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function setupDailyDateCompareChart() {
+            if (!document.getElementById('daily-date-compare-sensor')) return;
+            const target = document.getElementById('daily-date-compare-sensor').value;
+            const date1 = document.getElementById('daily-date-compare-1').value;
+            const date2 = document.getElementById('daily-date-compare-2').value;
+            
+            const means1 = getHourlyMeansForTarget(target, date1);
+            const means2 = getHourlyMeansForTarget(target, date2);
+
+            const ctx = document.getElementById('daily-date-compare-chart').getContext('2d');
+            if (dailyDateCompareChart) dailyDateCompareChart.destroy();
+            
+            const targetName = target === 'network' ? 'Average' : target.replace(/_/g, ' ');
+            const label1 = date1 ? date1 : 'All Data (1)';
+            const label2 = date2 ? date2 : 'All Data (2)';
+
+            dailyDateCompareChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    datasets: [
+                        {
+                            label: `${targetName} (${label1})`,
+                            data: means1,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: `${targetName} (${label2})`,
+                            data: means2,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { 
+                            min: 1.0, max: 4.0, reverse: true,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        let daytypeCompareChart = null;
+
+        function getHourlyMeansForDaytype(target, isWeekend) {
+            const hourlyAcc = new Array(24).fill(0).map(() => []);
+            trafficData.forEach(row => {
+                const isRowWeekend = (row.day === 'Friday' || row.day === 'Saturday');
+                if (isRowWeekend !== isWeekend) return;
+                const hour = parseInt(row.time.split(':')[0]);
+                if (target === 'network') {
+                    let rowSpeeds = [];
+                    sensorsConfig.forEach(s => {
+                        const v = row[s.name];
+                        if (typeof v === 'number' && v > 0) rowSpeeds.push(v);
+                    });
+                    if (rowSpeeds.length > 0) {
+                        hourlyAcc[hour].push(rowSpeeds.reduce((a, b) => a + b, 0) / rowSpeeds.length);
+                    }
+                } else {
+                    const v = row[target];
+                    if (typeof v === 'number' && v > 0) {
+                        hourlyAcc[hour].push(v);
+                    }
+                }
+            });
+            return hourlyAcc.map(arr => {
+                if (arr.length === 0) return { mean: 0, std: 0 };
+                const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+                const std = Math.sqrt(arr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / arr.length);
+                return { mean, std };
+            });
+        }
+
+        function setupDaytypeCompareChart() {
+            if (!document.getElementById('daytype-compare-sensor')) return;
+            const target = document.getElementById('daytype-compare-sensor').value;
+            
+            const weekdayStats = getHourlyMeansForDaytype(target, false);
+            const weekendStats = getHourlyMeansForDaytype(target, true);
+
+            const weekdayMeans = weekdayStats.map(s => s.mean);
+            const weekdayUpper = weekdayStats.map(s => s.mean + s.std);
+            const weekdayLower = weekdayStats.map(s => Math.max(0, s.mean - s.std));
+
+            const weekendMeans = weekendStats.map(s => s.mean);
+            const weekendUpper = weekendStats.map(s => s.mean + s.std);
+            const weekendLower = weekendStats.map(s => Math.max(0, s.mean - s.std));
+
+            const ctx = document.getElementById('daytype-compare-chart').getContext('2d');
+            if (daytypeCompareChart) daytypeCompareChart.destroy();
+            
+            const targetName = target === 'network' ? 'Average' : target.replace(/_/g, ' ');
+
+            daytypeCompareChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    datasets: [
+                        {
+                            label: `${targetName} (Weekday)`,
+                            data: weekdayMeans,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            zIndex: 10
+                        },
+                        {
+                            label: 'Weekday +1 SD',
+                            data: weekdayUpper,
+                            borderColor: 'transparent',
+                            backgroundColor: 'rgba(37, 99, 235, 0.15)',
+                            fill: '+1',
+                            pointRadius: 0,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Weekday Lower Bound',
+                            data: weekdayLower,
+                            borderColor: 'transparent',
+                            backgroundColor: 'transparent',
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.4
+                        },
+                        {
+                            label: `${targetName} (Weekend)`,
+                            data: weekendMeans,
+                            borderColor: '#eab308',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            zIndex: 10
+                        },
+                        {
+                            label: 'Weekend +1 SD',
+                            data: weekendUpper,
+                            borderColor: 'transparent',
+                            backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                            fill: '+1',
+                            pointRadius: 0,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Weekend Lower Bound',
+                            data: weekendLower,
+                            borderColor: 'transparent',
+                            backgroundColor: 'transparent',
+                            fill: false,
+                            pointRadius: 0,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { 
+                            position: 'top', 
+                            labels: { filter: (item) => !item.text.includes('Lower Bound') && !item.text.includes('+1 SD') } 
+                        } 
+                    },
+                    scales: {
+                        y: { 
+                            min: 1.0, max: 4.0, reverse: true,
+                            title: { display: true, text: 'Mean Congestion Index (MCI)', font: { size: 10 } },
+                            ticks: {
+                                stepSize: 1.0,
+                                callback: function(value) {
+                                    if (value === 4) return 'Standstill (4)';
+                                    if (value === 3) return 'Congested (3)';
+                                    if (value === 2) return 'Moderate (2)';
+                                    if (value === 1) return 'Free Flow (1)';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Export Functionality
+        function setupExports() {
+            document.getElementById('export-custom-heatmap').onclick = () => {
+                download(document.getElementById('custom-heatmap-canvas').toDataURL(), 'custom_heatmap.png');
+            };
+
+            document.getElementById('export-global-dist').onclick = () => {
+                download(globalChart.toBase64Image(), 'traffic_distribution.png');
+            };
+
+            document.getElementById('export-heatmap').onclick = () => {
+                download(document.getElementById('heatmap-canvas').toDataURL(), 'traffic_heatmap.png');
+            };
+
+            document.getElementById('export-daily').onclick = () => {
+                download(dailyChart.toBase64Image(), 'daily_pattern.png');
+            };
+
+            document.getElementById('export-weekly').onclick = () => {
+                download(weeklyChart.toBase64Image(), 'weekly_pattern.png');
+            };
+
+            document.getElementById('export-daily-compare').onclick = () => {
+                download(dailyCompareChart.toBase64Image(), 'daily_compare_pattern.png');
+            };
+
+            document.getElementById('export-weekly-compare').onclick = () => {
+                download(weeklyCompareChart.toBase64Image(), 'weekly_compare_pattern.png');
+            };
+
+            document.getElementById('export-daily-date-compare').onclick = () => {
+                download(dailyDateCompareChart.toBase64Image(), 'daily_date_compare_pattern.png');
+            };
+
+            document.getElementById('export-daytype-compare').onclick = () => {
+                download(daytypeCompareChart.toBase64Image(), 'daytype_compare_pattern.png');
+            };
+        }
+
+        function download(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+        }
+
+        init().then(() => setupExports());
+    </script>
+</body>
+</html>
+
+
+</body>
+</html>

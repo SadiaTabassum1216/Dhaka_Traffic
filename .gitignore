@@ -1,0 +1,9 @@
+data
+snapshots/
+
+.venv/
+__pycache__/
+*.pyc
+.env
+scripts
+methodology_images
